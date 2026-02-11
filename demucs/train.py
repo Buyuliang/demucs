@@ -53,7 +53,8 @@ def train_model(epoch,
                 # skip uncomplete batch for augment.Remix to work properly
                 continue
             sources = sources.to(device)
-            sources = augment(sources)
+            if augment is not None:
+                sources = augment(sources)
             mix = sources.sum(dim=1)
 
             estimates = model(mix)

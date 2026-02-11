@@ -21,7 +21,7 @@ def i16_pcm(wav):
 
 
 def f32_pcm(wav):
-    if wav.dtype == np.float:
+    if np.issubdtype(wav.dtype, np.floating):
         return wav
     return wav.float() / 2**15
 

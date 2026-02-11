@@ -13,6 +13,7 @@ dependencies:
   - pip
   - pip:
     - diffq<0.2.0
+    - importlib_resources>=3.3.0; python_version < "3.9"
     - julius>=0.2.3
     - lameenc>=1.2
     - musdb>=0.4.0

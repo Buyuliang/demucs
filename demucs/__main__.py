@@ -31,12 +31,12 @@ from .utils import (human_seconds, load_model, save_model, get_state,
 from .wav import get_wav_datasets, get_musdb_wav_datasets
 
 
-@dataclass
-class SavedState:
-    metrics: list = field(default_factory=list)
-    last_state: dict = None
-    best_state: dict = None
-    optimizer: dict = None
+# @dataclass
+# class SavedState:
+#     metrics: list = field(default_factory=list)
+#     last_state: dict = None
+#     best_state: dict = None
+#     optimizer: dict = None
 
 
 def main():
@@ -45,12 +45,12 @@ def main():
     name = get_name(parser, args)
     print(f"Experiment {name}")
 
-    if args.musdb is None and args.rank == 0:
-        print(
-            "You must provide the path to the MusDB dataset with the --musdb flag. "
-            "To download the MusDB dataset, see https://sigsep.github.io/datasets/musdb.html.",
-            file=sys.stderr)
-        sys.exit(1)
+    # if args.musdb is None and args.rank == 0:
+    #     print(
+    #         "You must provide the path to the MusDB dataset with the --musdb flag. "
+    #         "To download the MusDB dataset, see https://sigsep.github.io/datasets/musdb.html.",
+    #         file=sys.stderr)
+    #     sys.exit(1)
 
     eval_folder = args.evals / name
     eval_folder.mkdir(exist_ok=True, parents=True)
@@ -96,10 +96,12 @@ def main():
         else:
             model = load_pretrained(args.test_pretrained)
     elif args.tasnet:
+        sources=["vocals", "accompaniment"]
         model = ConvTasNet(audio_channels=args.audio_channels,
                            samplerate=args.samplerate, X=args.X,
                            segment_length=4 * args.samples,
-                           sources=SOURCES)
+                           sources=sources)
+                        #    sources=SOURCES)
     else:
         model = Demucs(
             audio_channels=args.audio_channels,
@@ -129,34 +131,45 @@ def main():
         print(f"Model size {size}")
         return
 
-    try:
+    # try:
+    #     saved = th.load(checkpoint, map_location='cpu')
+    # except IOError:
+    #     saved = SavedState()
+
+    if checkpoint.exists():
         saved = th.load(checkpoint, map_location='cpu')
-    except IOError:
-        saved = SavedState()
+    else:
+        saved = {
+            "metrics": [],
+            "last_state": None,
+            "best_state": None,
+            "optimizer": None,
+        }
 
     optimizer = th.optim.Adam(model.parameters(), lr=args.lr)
 
     quantizer = None
     quantizer = get_quantizer(model, args, optimizer)
 
-    if saved.last_state is not None:
-        model.load_state_dict(saved.last_state, strict=False)
-    if saved.optimizer is not None:
-        optimizer.load_state_dict(saved.optimizer)
+    if saved["last_state"] is not None:
+        model.load_state_dict(saved["last_state"], strict=False)
+    if saved["optimizer"] is not None:
+        optimizer.load_state_dict(saved["optimizer"])
 
     model_name = f"{name}.th"
     if args.save_model:
         if args.rank == 0:
             model.to("cpu")
-            assert saved.best_state is not None, "model needs to train for 1 epoch at least."
-            model.load_state_dict(saved.best_state)
-            save_model(model, quantizer, args, args.models / model_name)
+            assert saved["best_state"] is not None, "model needs to train for 1 epoch at least."
+            model.load_state_dict(saved["best_state"])
+            # save_model(model, quantizer, args, args.models / model_name)
+            th.save(model.state_dict(), args.models / model_name)
         return
     elif args.save_state:
         model_name = f"{args.save_state}.th"
         if args.rank == 0:
             model.to("cpu")
-            model.load_state_dict(saved.best_state)
+            model.load_state_dict(saved["best_state"])
             state = get_state(model, quantizer)
             save_state(state, args.models / model_name)
         return
@@ -214,14 +227,14 @@ def main():
         train_set, valid_set = get_compressed_datasets(args, samples)
     print("Train set and valid set sizes", len(train_set), len(valid_set))
 
-    if args.repitch:
-        train_set = RepitchedWrapper(
-            train_set,
-            proba=args.repitch,
-            max_tempo=args.max_tempo)
+    # if args.repitch:
+    #     train_set = RepitchedWrapper(
+    #         train_set,
+    #         proba=args.repitch,
+    #         max_tempo=args.max_tempo)
 
     best_loss = float("inf")
-    for epoch, metrics in enumerate(saved.metrics):
+    for epoch, metrics in enumerate(saved["metrics"]):
         print(f"Epoch {epoch:03d}: "
               f"train={metrics['train']:.8f} "
               f"valid={metrics['valid']:.8f} "
@@ -238,7 +251,7 @@ def main():
     else:
         dmodel = model
 
-    for epoch in range(len(saved.metrics), args.epochs):
+    for epoch in range(len(saved["metrics"]), args.epochs):
         begin = time.time()
         model.train()
         train_loss, model_size = train_model(
@@ -269,12 +282,12 @@ def main():
         duration = time.time() - begin
         if valid_loss < best_loss and ms <= args.ms_target:
             best_loss = valid_loss
-            saved.best_state = {
+            saved["best_state"] = {
                 key: value.to("cpu").clone()
                 for key, value in model.state_dict().items()
             }
 
-        saved.metrics.append({
+        saved["metrics"].append({
             "train": train_loss,
             "valid": valid_loss,
             "best": best_loss,
@@ -284,12 +297,13 @@ def main():
             "compressed_model_size": cms,
         })
         if args.rank == 0:
-            json.dump(saved.metrics, open(metrics_path, "w"))
+            json.dump(saved["metrics"], open(metrics_path, "w"))
 
-        saved.last_state = model.state_dict()
-        saved.optimizer = optimizer.state_dict()
+        saved["last_state"] = model.state_dict()
+        saved["optimizer"] = optimizer.state_dict()
         if args.rank == 0 and not args.test:
-            th.save(saved, checkpoint_tmp)
+            # th.save(saved, checkpoint_tmp)
+            th.save(saved, checkpoint_tmp, _use_new_zipfile_serialization=True)
             checkpoint_tmp.rename(checkpoint)
 
         print(f"Epoch {epoch:03d}: "
@@ -301,25 +315,26 @@ def main():
         distributed.barrier()
 
     del dmodel
-    model.load_state_dict(saved.best_state)
+    model.load_state_dict(saved["best_state"])
     if args.eval_cpu:
         device = "cpu"
         model.to(device)
     model.eval()
-    evaluate(model, args.musdb, eval_folder,
-             is_wav=args.is_wav,
-             rank=args.rank,
-             world_size=args.world_size,
-             device=device,
-             save=args.save,
-             split=args.split_valid,
-             shifts=args.shifts,
-             overlap=args.overlap,
-             workers=args.eval_workers)
+    # evaluate(model, args.musdb, eval_folder,
+    #          is_wav=args.is_wav,
+    #          rank=args.rank,
+    #          world_size=args.world_size,
+    #          device=device,
+    #          save=args.save,
+    #          split=args.split_valid,
+    #          shifts=args.shifts,
+    #          overlap=args.overlap,
+    #          workers=args.eval_workers)
     model.to("cpu")
     if args.rank == 0:
         if not (args.test or args.test_pretrained):
-            save_model(model, quantizer, args, args.models / model_name)
+            # save_model(model, quantizer, args, args.models / model_name)
+            th.save(model.state_dict(), args.models / model_name)
         print("done")
         done.write_text("done")
 
