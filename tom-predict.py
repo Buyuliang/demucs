@@ -66,4 +66,4 @@ if __name__ == "__main__":
 # python tom-predict.py \
 #   --model models/mydemucs.th \
 #   --input mydata/train/track_0005/mixture.wav \
-#   --out results
+#   --out output

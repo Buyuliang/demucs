@@ -25,3 +25,8 @@ python -m demucs \
   --repeat 100 \
   --lr 1e-3 \
   --no_augment
+
+
+
+
+python -m demucs --tasnet --wav mydata --audio_channels 2 --epochs 2 --batch_size 1 --samples 110250 --repeat 100 --lr 1e-3 --no_augment

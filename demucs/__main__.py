@@ -305,6 +305,8 @@ def main():
         if args.rank == 0 and not args.test:
             # th.save(saved, checkpoint_tmp)
             th.save(saved, checkpoint_tmp, _use_new_zipfile_serialization=True)
+            if checkpoint.exists():
+                    os.remove(checkpoint)
             checkpoint_tmp.rename(checkpoint)
 
         print(f"Epoch {epoch:03d}: "

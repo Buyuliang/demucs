@@ -176,14 +176,26 @@ class Decoder(nn.Module):
         Returns:
             est_source: [M, C, T]
         """
-        # D = W * M
+        # D = W * M  (source_w shape [M, C, N, K])
         source_w = torch.unsqueeze(mixture_w, 1) * est_mask  # [M, C, N, K]
-        source_w = torch.transpose(source_w, 2, 3)  # [M, C, K, N]
-        # S = DV
-        est_source = self.basis_signals(source_w)  # [M, C, K, ac * L]
-        m, c, k, _ = est_source.size()
-        est_source = est_source.view(m, c, k, self.audio_channels, -1).transpose(2, 3).contiguous()
-        est_source = overlap_and_add(est_source, self.L // 2)  # M x C x ac x T
+
+        # Merge batch and source dims to apply a grouped conv_transpose per-source.
+        m, c, n, k = source_w.size()
+        # Prepare conv_transpose weight from basis_signals.weight
+        # basis_signals.weight shape: (audio_channels * L, N)
+        # conv_transpose weight expected shape: (in_channels=N, out_channels=audio_channels, kernel_size=L)
+        conv_weight = self.basis_signals.weight.t().contiguous().view(n, self.audio_channels, self.L)
+
+        # Reshape input to [M*C, N, K]
+        src = source_w.view(m * c, n, k)
+
+        # Perform transposed convolution which naturally performs the overlap-and-add
+        # with stride = L // 2 (encoder used stride L//2).
+        out = F.conv_transpose1d(src, conv_weight, bias=None, stride=self.L // 2)
+
+        # Reshape back to [M, C, audio_channels, T]
+        T = out.size(-1)
+        est_source = out.view(m, c, self.audio_channels, T)
         return est_source
 
 
