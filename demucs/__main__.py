@@ -64,6 +64,7 @@ def main():
         device = "cpu"
         if th.cuda.is_available():
             device = "cuda"
+        print(f"Device not specified, using {device}")
     else:
         device = args.device
 
