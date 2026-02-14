@@ -306,7 +306,7 @@ def main():
             # th.save(saved, checkpoint_tmp)
             th.save(saved, checkpoint_tmp, _use_new_zipfile_serialization=True)
             if checkpoint.exists():
-                    os.remove(checkpoint)
+                os.remove(checkpoint)
             checkpoint_tmp.rename(checkpoint)
 
         print(f"Epoch {epoch:03d}: "
@@ -337,7 +337,43 @@ def main():
     if args.rank == 0:
         if not (args.test or args.test_pretrained):
             # save_model(model, quantizer, args, args.models / model_name)
+            # 1️⃣ 保存 PyTorch checkpoint
             th.save(model.state_dict(), args.models / model_name)
+
+            # 2️⃣ 导出 ONNX
+            dummy_input = th.randn(
+                1,
+                args.audio_channels,
+                model.valid_length(args.samples)
+            )
+            print("args.samples:", args.samples)
+            print("valid_length:", model.valid_length(args.samples))
+            print("dummy_input shape:", dummy_input.shape)
+            onnx_path = args.models / f"{name}.onnx"
+
+            th.onnx.export(
+                model,
+                dummy_input,
+                onnx_path,
+                opset_version=13,
+                input_names=["input"],
+                output_names=["output"],
+                dynamic_axes={
+                    "input": {
+                        0: "batch_size",
+                        1: "channels",
+                        2: "num_samples"
+                    },
+                    "output": {
+                        0: "batch_size",
+                        1: "channels",
+                        2: "num_samples"
+                    }
+                },
+                do_constant_folding=True
+            )
+
+            print(f"ONNX model exported to {onnx_path}")
         print("done")
         done.write_text("done")
 
